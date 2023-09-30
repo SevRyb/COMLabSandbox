@@ -77,6 +77,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_plotGridLay = new QGridLayout(m_plotGroupBox);
 
     m_signalPlotter = new SignalPlotter(m_plotGroupBox);
+    //m_signalPlotter->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
 
     m_plotGridLay->addWidget(m_signalPlotter, 0, 0);
 
