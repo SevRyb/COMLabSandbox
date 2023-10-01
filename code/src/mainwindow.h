@@ -5,6 +5,7 @@
 #include <oclero/qlementine/widgets/FramelessWindow.hpp>
 #include <oclero/qlementine/widgets/LineEdit.hpp>
 #include <oclero/qlementine/widgets/Switch.hpp>
+#include <oclero/qlementine/widgets/StatusBadgeWidget.hpp>
 #include <QGridLayout>
 #include <QLineEdit>
 #include <QPlainTextEdit>
@@ -15,9 +16,13 @@
 #include <QLabel>
 #include <QScrollArea>
 
+#include <QList>
+
+#include <QSerialPortInfo>
 #include <QSerialPort>
 
 #include "signal_plotter.h"
+#include "combo_box.h"
 
 using namespace oclero;
 
@@ -31,10 +36,17 @@ public:
     ~MainWindow();
 protected:
     void closeEvent(QCloseEvent *event) override;
-private slots:
 
+private slots:
     void onReadyRead();
+    void onRefreshPorts();
+    void onOpenClosePort();
+    void onSendMsg();
+    //void onReceivedMsg();
 private:
+    void setupDefaults();
+    void enableSetupFields(bool enabled);
+
     QWidget *m_rootWidget;
     QGridLayout *m_rootLay;
 
@@ -46,9 +58,11 @@ private:
 
     // Send area
     QGridLayout *m_sendGridLay;
-    qlementine::LineEdit *m_msgToSendEdit;
+    //qlementine::LineEdit *m_msgToSendEdit;
+    QPlainTextEdit *m_msgToSendEdit;
     QPushButton *m_sendBtn;
-    qlementine::Switch *m_asciiSwitch;
+    //qlementine::Switch *m_asciiSwitch;
+    QComboBox *m_encodingComboBox;
 
     // Received area
     QGridLayout *m_receivedGridLay;
@@ -57,13 +71,14 @@ private:
     // Setup area
     QGridLayout *m_setupGridLay;
 
-    QComboBox *m_portComboBox;
+    ComboBox *m_portComboBox;
     QSpinBox *m_baudRateSpinBox;
     QComboBox *m_parityComboBox;
-    QComboBox *m_stopBitsComboBox;
-    QComboBox *m_dataBitsComboBox;
+    QSpinBox *m_stopBitsSpinBox;
+    QSpinBox *m_dataBitsSpinBox;
     QSpinBox *m_wordsDelaySpinBox;
     QPushButton *m_openCloseBtn;
+    qlementine::StatusBadgeWidget *m_portOpenStatusWidget;
 
 
     // Plot area
@@ -74,7 +89,10 @@ private:
 
     QString m_baseWindowTitle;
 
+    bool m_isPortOpened;
     QSerialPort m_serialPort;
+
+
 
 
 };

@@ -26,6 +26,8 @@ set(PROJECT_SOURCES
         src/mainwindow.h
 	src/signal_plotter.cpp
 	src/signal_plotter.h
+	src/combo_box.cpp
+	src/combo_box.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
