@@ -113,16 +113,27 @@ void SignalPlotter::visualizeMsg(const QSerialPort &serial_port, const QByteArra
     }
 
 
+    QRectF rect;
     /* Draw idle */
     QBrush idle_brush(QColor(199, 199, 199));
-    painter.fillRect(signal_hoffset, signal_voffset, 1*tact_width, amplitude_height, idle_brush);
+    rect = QRectF(signal_hoffset, signal_voffset, 2 * tact_width, amplitude_height);  // Always add two "1"
+    painter.fillRect(rect, idle_brush);
+
     /* Draw start bit */
-    //QBrush pattern_brush(QColor(150, 165, 178), Qt::Dense5Pattern);
     QBrush pattern_brush(signal_pen.color(), Qt::Dense5Pattern);
-    painter.fillRect(signal_hoffset + tact_width, signal_voffset, tact_width, amplitude_height, pattern_brush);
+    rect = QRectF(rect.right(), signal_voffset, tact_width, amplitude_height);  // Always one bit
+    painter.fillRect(rect, pattern_brush);
+
+    /* Draw stop bit */
+    rect = QRectF(signal_hoffset + (3 + static_cast<qint8>(serial_port.dataBits())) * tact_width,
+                  signal_voffset,
+                  tact_width * static_cast<qint8>(serial_port.stopBits()),
+                  amplitude_height);  // Always one bit
+    painter.fillRect(rect, pattern_brush);
+
     /* Draw parity bit */
     QBrush parity_brush(QColor(230, 216, 194), Qt::Dense5Pattern);
-    painter.fillRect(signal_hoffset + 11 * tact_width, signal_voffset, tact_width, amplitude_height, parity_brush);
+    painter.fillRect(signal_hoffset + 12 * tact_width, signal_voffset, tact_width, amplitude_height, parity_brush);
 
     painter.drawPath(signal_path);
 
