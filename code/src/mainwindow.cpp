@@ -3,6 +3,7 @@
 
 #include <QDebug>
 #include <QTextCodec>
+#include <QByteArray>
 
 using namespace oclero;
 
@@ -133,6 +134,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
 void MainWindow::onReadyRead()
 {
     QByteArray data = m_serialPort.readAll();
+
+
     QTextCodec *codec = QTextCodec::codecForName(m_encodingComboBox->currentData().toByteArray());
     m_receivedMsgsEdit->setPlainText(codec->toUnicode(data));
 }
@@ -180,6 +183,9 @@ void MainWindow::onOpenClosePort()
         qDebug() << "Parity: " << m_serialPort.parity();
         qDebug() << "Stop bits: " << m_serialPort.stopBits();
         qDebug() << "Data bits: " << m_serialPort.dataBits();
+
+        QByteArray b("a");
+        m_signalPlotter->visualizeMsg(m_serialPort, b);
 
         if (m_isPortOpened)
         {
