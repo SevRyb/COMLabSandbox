@@ -11,6 +11,10 @@ MainWindow::MainWindow(QWidget *parent)
     : qlementine::FramelessWindow(parent)
     , m_baseWindowTitle("COMLabSandbox")
     , m_isPortOpened(false)
+    , m_charToSendIndex(0)
+    , m_plotBitsIndexLeft(0)
+    , m_plotBitsIndexRight(0)
+    , m_plotRecvSent(0)
 {
     setWindowTitle(m_baseWindowTitle);
     resize(1200, 800);
@@ -26,6 +30,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_receivedGroupBox->setTitle("Received");
     m_setupGroupBox = new QGroupBox(this);
     m_setupGroupBox->setTitle("Setup");
+    m_calcGroupBox = new QGroupBox(this);
+    m_calcGroupBox->setTitle("Calculations");
+    m_viewGroupBox = new QGroupBox(this);
+    m_viewGroupBox->setTitle("View");
     m_plotGroupBox = new QGroupBox(this);
     m_plotGroupBox->setTitle("Plot");
 
@@ -35,17 +43,20 @@ MainWindow::MainWindow(QWidget *parent)
     m_msgToSendEdit = new QPlainTextEdit(m_sendGroupBox);
     m_encodingComboBox = new QComboBox(m_sendGroupBox);
     m_encodingComboBox->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
+    m_sendOneBtn = new QPushButton("Send char at 0", m_sendGroupBox);
+    m_sendOneBtn->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
     m_sendBtn = new QPushButton("Send", m_sendGroupBox);
     m_sendBtn->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
 
-    QLabel *lbl = new QLabel("Message encoding", m_msgToSendEdit);
+    QLabel *msgEncodingLbl = new QLabel("Message encoding", m_msgToSendEdit);
     //lbl->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
 
-    m_sendGridLay->addWidget(m_msgToSendEdit, 0, 0, 1, 3);
-    m_sendGridLay->addWidget(lbl, 1, 0);
+    m_sendGridLay->addWidget(m_msgToSendEdit, 0, 0, 1, 4);
+    m_sendGridLay->addWidget(msgEncodingLbl, 1, 0);
     m_sendGridLay->addWidget(m_encodingComboBox, 1, 1);
-    m_sendGridLay->addWidget(m_sendBtn, 1, 2);
-    m_sendGridLay->setAlignment(lbl, Qt::AlignRight);
+    m_sendGridLay->addWidget(m_sendOneBtn, 1, 2);
+    m_sendGridLay->addWidget(m_sendBtn, 1, 3);
+    m_sendGridLay->setAlignment(msgEncodingLbl, Qt::AlignRight);
 
     // Received area
     m_receivedGridLay = new QGridLayout(m_receivedGroupBox);
@@ -83,25 +94,58 @@ MainWindow::MainWindow(QWidget *parent)
     m_setupGridLay->addWidget(m_portOpenStatusWidget, 6, 0);
     m_setupGridLay->addWidget(m_openCloseBtn, 6, 1);
 
+    // Calculations area
+    m_calcGridLay = new QGridLayout(m_calcGroupBox);
+
+    m_calcLbl = new QLabel(m_calcGroupBox);
+    m_calcLbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    QFont font = m_calcLbl->font();
+    font.setItalic(true);
+    font.setBold(true);
+    m_calcLbl->setFont(font);
+
+    m_calcGridLay->addWidget(m_calcLbl);
+
+
+    // View area
+    m_viewGridLay = new QGridLayout(m_viewGroupBox);
+
+    m_viewSentRecvSwitch = new qlementine::SegmentedControl(m_viewGroupBox);
+    m_viewSentRecvSwitch->addItem("Recv");
+    m_viewSentRecvSwitch->addItem("Sent");
+
+    m_prevBitsBtn = new QPushButton("Prev", m_viewGroupBox);
+    m_nextBitsBtn = new QPushButton("Next", m_viewGroupBox);
+    m_plotBitsSpinBox = new QSpinBox(m_viewGroupBox);
+
+    m_viewGridLay->addWidget(m_viewSentRecvSwitch, 0, 0, 1, 3);
+    m_viewGridLay->addWidget(m_prevBitsBtn, 1, 0);
+    m_viewGridLay->addWidget(m_plotBitsSpinBox, 1, 1);
+    m_viewGridLay->addWidget(m_nextBitsBtn, 1, 2);
+
 
     // Plot area
     m_plotGridLay = new QGridLayout(m_plotGroupBox);
 
     m_signalPlotter = new SignalPlotter(m_plotGroupBox);
     //m_signalPlotter->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+    m_signalPlotter->setFixedHeight(300);
 
     m_plotGridLay->addWidget(m_signalPlotter, 0, 0);
 
 
 
-    m_rootLay->addWidget(m_sendGroupBox, 0, 0, 1, 1);
-    m_rootLay->addWidget(m_receivedGroupBox, 1, 0, 1, 1);
+    m_rootLay->addWidget(m_sendGroupBox, 0, 0);
+    m_rootLay->addWidget(m_receivedGroupBox, 1, 0);
     m_rootLay->addWidget(m_setupGroupBox, 0, 1, 2, 1);
-    m_rootLay->addWidget(m_plotGroupBox, 2, 0, 1, 2);
+    m_rootLay->addWidget(m_calcGroupBox, 2, 0);
+    m_rootLay->addWidget(m_viewGroupBox, 2, 1);
+    m_rootLay->addWidget(m_plotGroupBox, 3, 0, 1, 2);
 
-    m_rootLay->setRowStretch(0, 1);
-    m_rootLay->setRowStretch(1, 2);
-    m_rootLay->setRowStretch(2, 2);
+    //m_rootLay->setRowStretch(0, 1);
+    //m_rootLay->setRowStretch(1, 1);
+    //m_rootLay->setRowStretch(2, 2);
+    //m_rootLay->setRowStretch(2, 2);
 
 
     /**/
@@ -113,31 +157,54 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&m_serialPort, &QSerialPort::readyRead, this, &MainWindow::onReadyRead);
     connect(m_openCloseBtn, &QPushButton::clicked, this, &MainWindow::onOpenClosePort);
     connect(m_portComboBox, &ComboBox::pressed, this, &MainWindow::onRefreshPorts);
-    connect(m_sendBtn, &QPushButton::clicked, this, &MainWindow::onSendMsg);
+    connect(m_sendOneBtn, &QPushButton::clicked, this, &MainWindow::onSendOne);
+    connect(m_sendBtn, &QPushButton::clicked, this, &MainWindow::onSend);
+    connect(m_viewSentRecvSwitch, &qlementine::SegmentedControl::currentIndexChanged, this, [this]()
+            {
+                m_plotRecvSent = m_viewSentRecvSwitch->currentIndex();
+                triggerMsgPlot();
+                updateCalculations();
+            });
+    connect(m_prevBitsBtn, &QPushButton::clicked, this, [this]()
+            {
+                if (!m_recvMsgBytes.isEmpty())
+                {
+                    int len = m_recvMsgBytes.length();
+                    int size = _moveChunk(m_plotBitsIndexLeft, m_plotBitsIndexRight, len, m_plotBitsSpinBox->value(), false);
+                    if (size != 0)
+                        m_signalPlotter->visualizeMsg(&m_serialPort, m_wordsDelaySpinBox->value(), m_recvMsgBytes.mid(m_plotBitsIndexLeft, size));
+                }
+            });
+    connect(m_nextBitsBtn, &QPushButton::clicked, this, [this]()
+            {
+                if (!m_recvMsgBytes.isEmpty())
+                {
+                    int len = m_recvMsgBytes.length();
+                    int size = _moveChunk(m_plotBitsIndexLeft, m_plotBitsIndexRight, len, m_plotBitsSpinBox->value());
+                    if (size != 0)
+                        m_signalPlotter->visualizeMsg(&m_serialPort, m_wordsDelaySpinBox->value(), m_recvMsgBytes.mid(m_plotBitsIndexLeft, size));
+                }
+            });
 
     setupDefaults();
 
     onRefreshPorts();
 
+    /* Test */
+//    m_serialPort.setBaudRate(100);
+//    m_serialPort.setDataBits(QSerialPort::Data8);
+//    m_serialPort.setStopBits(QSerialPort::TwoStop);
+//    m_serialPort.setParity(QSerialPort::OddParity);
+//    m_signalPlotter->visualizeMsg(&m_serialPort, 2, QByteArray("п"));
+
 }
 
-MainWindow::~MainWindow()
-{
-}
+MainWindow::~MainWindow() {}
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     m_serialPort.close();
     qlementine::FramelessWindow::closeEvent(event);
-}
-
-void MainWindow::onReadyRead()
-{
-    QByteArray data = m_serialPort.readAll();
-
-
-    QTextCodec *codec = QTextCodec::codecForName(m_encodingComboBox->currentData().toByteArray());
-    m_receivedMsgsEdit->setPlainText(codec->toUnicode(data));
 }
 
 void MainWindow::onRefreshPorts()
@@ -184,9 +251,6 @@ void MainWindow::onOpenClosePort()
         qDebug() << "Stop bits: " << m_serialPort.stopBits();
         qDebug() << "Data bits: " << m_serialPort.dataBits();
 
-        QByteArray b("a");
-        m_signalPlotter->visualizeMsg(m_serialPort, b);
-
         if (m_isPortOpened)
         {
             m_portOpenStatusWidget->setBadge(qlementine::StatusBadge::Success);
@@ -198,32 +262,48 @@ void MainWindow::onOpenClosePort()
     }
 }
 
-void MainWindow::onSendMsg()
+void MainWindow::onReadyRead()
+{
+    m_recvMsgBytes = m_serialPort.readAll();
+
+    QTextCodec *codec = QTextCodec::codecForName(m_encodingComboBox->currentData().toByteArray());
+    m_receivedMsgsEdit->setPlainText(codec->toUnicode(m_recvMsgBytes));
+    triggerMsgPlot();
+    updateCalculations();
+}
+
+void MainWindow::onSend()
 {
     if (m_isPortOpened)
     {
         QString text = m_msgToSendEdit->toPlainText();
         QTextCodec *codec = QTextCodec::codecForName(m_encodingComboBox->currentData().toByteArray());
-        QByteArray data = codec->fromUnicode(text);
-        quint64 written = m_serialPort.write(data);
+        m_sentMsgBytes = codec->fromUnicode(text);
+        quint64 written = m_serialPort.write(m_sentMsgBytes);
+        triggerMsgPlot();
+        updateCalculations();
     }
-//    int i = 0;
-//    //QString text = m_msgToSendEdit->text();
-//    char c = static_cast<char>(247);
-//    QChar ch(c);
-//    QString text;
-//    text.append(ch);
-//    QList lst = QTextCodec::availableCodecs();
-//    for (auto &e : lst)
-//    {
-//        QTextCodec *codec = QTextCodec::codecForName(e);
-//        QByteArray data = codec->fromUnicode(text);
-//        m_receivedMsgsEdit->appendPlainText(e);
-//        m_receivedMsgsEdit->appendPlainText(codec->toUnicode(data));
-//        m_receivedMsgsEdit->appendPlainText(data.toHex());
-//        qDebug() << data.toHex();
-//        i++;
-//    }
+}
+
+void MainWindow::onSendOne()
+{
+    if (m_isPortOpened)
+    {
+        QString text = m_msgToSendEdit->toPlainText();
+        if (m_charToSendIndex < text.length())
+        {
+            QChar ch = text.at(m_charToSendIndex);
+            QTextCodec *codec = QTextCodec::codecForName(m_encodingComboBox->currentData().toByteArray());
+            m_sentMsgBytes = codec->fromUnicode(ch);
+            quint64 written = m_serialPort.write(m_sentMsgBytes);
+            m_charToSendIndex++;
+            triggerMsgPlot();
+            updateCalculations();
+        }
+        else
+            m_charToSendIndex = 0;
+        m_sendOneBtn->setText(QString("Send char at %1").arg(m_charToSendIndex));
+    }
 }
 
 void MainWindow::setupDefaults()
@@ -250,9 +330,12 @@ void MainWindow::setupDefaults()
 
     m_stopBitsSpinBox->setRange(1, 2);
     m_stopBitsSpinBox->setValue(1);
-    m_dataBitsSpinBox->setRange(5, 8);
+    //m_dataBitsSpinBox->setRange(5, 8);
+    m_dataBitsSpinBox->setRange(8, 8);
     m_dataBitsSpinBox->setValue(8);
-
+    m_wordsDelaySpinBox->setValue(1);
+    m_plotBitsSpinBox->setValue(10);
+    m_plotBitsSpinBox->setRange(1, 30);
 }
 
 void MainWindow::enableSetupFields(bool enabled)
@@ -263,6 +346,54 @@ void MainWindow::enableSetupFields(bool enabled)
     m_stopBitsSpinBox->setEnabled(enabled);
     m_dataBitsSpinBox->setEnabled(enabled);
     m_wordsDelaySpinBox->setEnabled(enabled);
+}
+
+void MainWindow::triggerMsgPlot()
+{
+    m_plotBitsIndexLeft = 0;
+    m_plotBitsIndexRight = m_plotBitsSpinBox->value() - 1;
+    if (m_plotRecvSent)
+        m_signalPlotter->visualizeMsg(&m_serialPort, m_wordsDelaySpinBox->value(), m_sentMsgBytes.mid(m_plotBitsIndexLeft, m_plotBitsSpinBox->value()));
+    else
+        m_signalPlotter->visualizeMsg(&m_serialPort, m_wordsDelaySpinBox->value(), m_recvMsgBytes.mid(m_plotBitsIndexLeft, m_plotBitsSpinBox->value()));
+}
+
+void MainWindow::updateCalculations()
+{
+    if (!m_isPortOpened)
+    {
+        m_calcLbl->clear();
+        return;
+    }
+
+    int msgWords = 0;
+    if (m_plotRecvSent)
+        msgWords = m_sentMsgBytes.length();
+    else
+        msgWords = m_recvMsgBytes.length();
+
+    if (msgWords == 0)
+    {
+        m_calcLbl->clear();
+        return;
+    }
+
+    int dataBits = m_dataBitsSpinBox->value();
+    int stopBits = m_stopBitsSpinBox->value();
+    int delayTacts = m_wordsDelaySpinBox->value();
+
+    int parityBit = 0;
+    if (m_serialPort.parity() != QSerialPort::NoParity)
+        parityBit++;
+
+    int baudRate = m_serialPort.baudRate();
+    float T = (float) 1.0 / baudRate;
+
+    int tacts = msgWords * (1 + dataBits + parityBit + stopBits + delayTacts) - 1;
+    float msgTime = (float) T * tacts;
+
+    QString text = QString(("tacts = %1\nT = 1 / baudRate = %2 s\ntime = T * tacts = %3 s")).arg(tacts).arg(T).arg(msgTime);
+    m_calcLbl->setText(text);
 }
 
 

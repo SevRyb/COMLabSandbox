@@ -6,6 +6,7 @@
 #include <oclero/qlementine/widgets/LineEdit.hpp>
 #include <oclero/qlementine/widgets/Switch.hpp>
 #include <oclero/qlementine/widgets/StatusBadgeWidget.hpp>
+#include <oclero/qlementine/widgets/SegmentedControl.hpp>
 #include <QGridLayout>
 #include <QLineEdit>
 #include <QPlainTextEdit>
@@ -20,6 +21,8 @@
 
 #include <QSerialPortInfo>
 #include <QSerialPort>
+
+#include <functional>
 
 #include "signal_plotter.h"
 #include "combo_box.h"
@@ -38,14 +41,17 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private slots:
-    void onReadyRead();
     void onRefreshPorts();
     void onOpenClosePort();
-    void onSendMsg();
+    void onReadyRead();
+    void onSend();
+    void onSendOne();
     //void onReceivedMsg();
 private:
     void setupDefaults();
     void enableSetupFields(bool enabled);
+    void triggerMsgPlot();
+    void updateCalculations();
 
     QWidget *m_rootWidget;
     QGridLayout *m_rootLay;
@@ -54,15 +60,16 @@ private:
     QGroupBox *m_sendGroupBox;
     QGroupBox *m_receivedGroupBox;
     QGroupBox *m_setupGroupBox;
+    QGroupBox *m_calcGroupBox;
+    QGroupBox *m_viewGroupBox;
     QGroupBox *m_plotGroupBox;
 
     // Send area
     QGridLayout *m_sendGridLay;
-    //qlementine::LineEdit *m_msgToSendEdit;
     QPlainTextEdit *m_msgToSendEdit;
-    QPushButton *m_sendBtn;
-    //qlementine::Switch *m_asciiSwitch;
     QComboBox *m_encodingComboBox;
+    QPushButton *m_sendOneBtn;
+    QPushButton *m_sendBtn;
 
     // Received area
     QGridLayout *m_receivedGridLay;
@@ -80,6 +87,20 @@ private:
     QPushButton *m_openCloseBtn;
     qlementine::StatusBadgeWidget *m_portOpenStatusWidget;
 
+    // Calculations area
+    QGridLayout *m_calcGridLay;
+
+    QLabel *m_calcLbl;
+
+
+    // View area
+    QGridLayout *m_viewGridLay;
+
+    qlementine::SegmentedControl *m_viewSentRecvSwitch;
+    QPushButton *m_prevBitsBtn;
+    QPushButton *m_nextBitsBtn;
+    QSpinBox *m_plotBitsSpinBox;
+
 
     // Plot area
     QGridLayout *m_plotGridLay;
@@ -92,9 +113,14 @@ private:
     bool m_isPortOpened;
     QSerialPort m_serialPort;
 
+    int m_charToSendIndex;
 
+    int m_plotBitsIndexLeft;
+    int m_plotBitsIndexRight;
 
-
+    bool m_plotRecvSent;
+    QByteArray m_recvMsgBytes;
+    QByteArray m_sentMsgBytes;
 };
 
 #endif // MAINWINDOW_H
