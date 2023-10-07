@@ -5,40 +5,47 @@
 #include <QPixmap>
 #include <QScrollBar>
 #include <QFontMetrics>
-#include <QStaticText>
+#include <QPushButton>
+#include <QShortcut>
+#include <QFileDialog>
 #include <QDebug>
 
 
 SignalPlotter::SignalPlotter(QWidget *parent)
     : QScrollArea(parent)
 {
-    m_lbl = new QLabel(this);
-    m_lbl->resize(0, 0);
-
     m_nPacketBits = 0;
 
-    m_plotPos = QPointF(50, 60);
+    m_plotPos = QPointF(50, 35);
     m_squareSize = QSizeF(60, 100);
 
+    m_lbl = new QLabel(this);
+    m_lbl->resize(0, 0);
+    m_lbl->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    QKeySequence keySequence = QKeySequence(Qt::CTRL + Qt::Key_S);
+    QShortcut *schortcut = new QShortcut(keySequence, this);
+    m_saveImgAction = new QAction("Save as...", m_lbl);
+    m_saveImgAction->setShortcut(keySequence);
+    m_contextMenu = new QMenu(m_lbl);
+    m_contextMenu->addAction(m_saveImgAction);
+
     setWidget(m_lbl);
+
+    connect(m_lbl, &QLabel::customContextMenuRequested, this, &SignalPlotter::onContextMenu);
+    connect(m_saveImgAction, &QAction::triggered, this, &SignalPlotter::onSaveImg);
+    connect(schortcut, &QShortcut::activated, this, &SignalPlotter::onSaveImg);
 }
 
 SignalPlotter::~SignalPlotter() {}
-
-//void SignalPlotter::paintEvent(QPaintEvent *event)
-//{
-//    QScrollArea::paintEvent(event);
-//    QPainter painter(this);
-//    painter.fillRect(QRect(QPoint(0, 0), size()), QBrush(Qt::red));
-//}
 
 void SignalPlotter::visualizeMsg(const QSerialPort *serial_port, int words_delay, const QByteArray &data)
 {
     if (data.isEmpty())
     {
         m_image = QImage();
-        m_lbl->resize(m_image.size());
         m_lbl->setPixmap(QPixmap::fromImage(m_image));
+        m_lbl->adjustSize();
         return;
     }
 
@@ -57,8 +64,8 @@ void SignalPlotter::visualizeMsg(const QSerialPort *serial_port, int words_delay
 
     int right_margin = 50;
     QSize img_size = QSize(m_plotPos.x() + (m_nPacketBits * m_squareSize.width() * data.length()) + right_margin,
-                           300);
-    m_image = QImage(img_size, QImage::Format_RGB888);
+                           220);
+    m_image = QImage(img_size, QImage::Format_RGB16);
     m_image.fill(QColor(Qt::white));
 
     QPainter painter(&m_image);
@@ -113,24 +120,29 @@ void SignalPlotter::visualizeMsg(const QSerialPort *serial_port, int words_delay
         prev_bit = packet_data.back();
     }
 
-
-
     painter.end();
 
-
-    m_lbl->resize(m_image.size());
     m_lbl->setPixmap(QPixmap::fromImage(m_image));
+    m_lbl->adjustSize();
+}
 
+void SignalPlotter::onContextMenu(const QPoint &pos)
+{
+    m_contextMenu->popup(m_lbl->mapToGlobal(pos));
+}
 
-    //qDebug() << "Packet bits: " << m_nPacketBits;
-
-
+void SignalPlotter::onSaveImg()
+{
+    QString defaultFileName = QDir::currentPath() + "/plot.png";
+    QString fileName = QFileDialog::getSaveFileName(this, tr("Save Plot"),
+                                                    defaultFileName,
+                                                    tr("Images (*.png *.jpg)"));
+    m_image.save(fileName);
 }
 
 void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packet_data, Bit prev_bit,
                                     const QPointF &segment_pos, const QString &data_note)
 {
-
     int nIdleBits = 0;
     qreal lowLevelY = segment_pos.y() + m_squareSize.height();
     qreal highLevelY = segment_pos.y();

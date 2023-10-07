@@ -13,7 +13,6 @@ public:
     explicit ComboBox(QWidget *parent = nullptr);
 protected:
     void mousePressEvent(QMouseEvent *event) override;
-    //void focusInEvent(QFocusEvent *event) override;
 
 signals:
     void pressed();

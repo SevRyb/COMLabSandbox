@@ -18,11 +18,11 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle(m_baseWindowTitle);
     resize(1200, 800);
+    setMinimumHeight(900);
     m_rootLay = new QGridLayout;
     m_rootWidget = new QWidget(this);
     m_rootWidget->setLayout(m_rootLay);
     setContentWidget(m_rootWidget);
-
 
     m_sendGroupBox = new QGroupBox(this);
     m_sendGroupBox->setTitle("Send");
@@ -49,7 +49,6 @@ MainWindow::MainWindow(QWidget *parent)
     m_sendBtn->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
 
     QLabel *msgEncodingLbl = new QLabel("Message encoding", m_msgToSendEdit);
-    //lbl->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
 
     m_sendGridLay->addWidget(m_msgToSendEdit, 0, 0, 1, 4);
     m_sendGridLay->addWidget(msgEncodingLbl, 1, 0);
@@ -60,11 +59,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Received area
     m_receivedGridLay = new QGridLayout(m_receivedGroupBox);
-
     m_receivedMsgsEdit = new QPlainTextEdit(m_receivedGroupBox);
-
     m_receivedGridLay->addWidget(m_receivedMsgsEdit, 0, 0);
-
 
     // Setup area
     m_setupGridLay = new QGridLayout(m_setupGroupBox);
@@ -97,15 +93,16 @@ MainWindow::MainWindow(QWidget *parent)
     // Calculations area
     m_calcGridLay = new QGridLayout(m_calcGroupBox);
 
-    m_calcLbl = new QLabel(m_calcGroupBox);
+    m_calcLbl = new QLabel("\n\n\n", m_calcGroupBox);
     m_calcLbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
     QFont font = m_calcLbl->font();
-    font.setItalic(true);
-    font.setBold(true);
+    font.setFamily("Consolas");
+    font.setPixelSize(16);
+    //font.setItalic(true);
+    //font.setBold(true);
     m_calcLbl->setFont(font);
 
     m_calcGridLay->addWidget(m_calcLbl);
-
 
     // View area
     m_viewGridLay = new QGridLayout(m_viewGroupBox);
@@ -129,7 +126,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_signalPlotter = new SignalPlotter(m_plotGroupBox);
     //m_signalPlotter->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
-    m_signalPlotter->setFixedHeight(300);
+    m_signalPlotter->setFixedHeight(220);
 
     m_plotGridLay->addWidget(m_signalPlotter, 0, 0);
 
@@ -142,14 +139,13 @@ MainWindow::MainWindow(QWidget *parent)
     m_rootLay->addWidget(m_viewGroupBox, 2, 1);
     m_rootLay->addWidget(m_plotGroupBox, 3, 0, 1, 2);
 
-    //m_rootLay->setRowStretch(0, 1);
-    //m_rootLay->setRowStretch(1, 1);
-    //m_rootLay->setRowStretch(2, 2);
-    //m_rootLay->setRowStretch(2, 2);
+    m_rootLay->setRowStretch(0, 1);
+    m_rootLay->setRowStretch(1, 1);
+    m_rootLay->setRowStretch(2, 0);
+    m_rootLay->setRowStretch(3, 0);
 
 
     /**/
-    //m_msgToSendEdit->setClearButtonEnabled(true);
     m_msgToSendEdit->setPlaceholderText("Data");
     m_receivedMsgsEdit->setPlaceholderText("Received");
 
@@ -187,16 +183,7 @@ MainWindow::MainWindow(QWidget *parent)
             });
 
     setupDefaults();
-
     onRefreshPorts();
-
-    /* Test */
-//    m_serialPort.setBaudRate(100);
-//    m_serialPort.setDataBits(QSerialPort::Data8);
-//    m_serialPort.setStopBits(QSerialPort::TwoStop);
-//    m_serialPort.setParity(QSerialPort::OddParity);
-//    m_signalPlotter->visualizeMsg(&m_serialPort, 2, QByteArray("п"));
-
 }
 
 MainWindow::~MainWindow() {}
@@ -213,9 +200,7 @@ void MainWindow::onRefreshPorts()
     m_portComboBox->clear();
     QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
     for (QSerialPortInfo &port : ports)
-    {
         m_portComboBox->addItem(port.portName());
-    }
     int index = m_portComboBox->findText(prev_port_name);
     if (index != -1)
         m_portComboBox->setCurrentIndex(index);
@@ -246,11 +231,6 @@ void MainWindow::onOpenClosePort()
         m_serialPort.setDataBits(QVariant(m_dataBitsSpinBox->value()).value<QSerialPort::DataBits>());
         m_isPortOpened = m_serialPort.open(QIODevice::ReadWrite);
 
-        qDebug() << "Boud rate: " << m_serialPort.baudRate();
-        qDebug() << "Parity: " << m_serialPort.parity();
-        qDebug() << "Stop bits: " << m_serialPort.stopBits();
-        qDebug() << "Data bits: " << m_serialPort.dataBits();
-
         if (m_isPortOpened)
         {
             m_portOpenStatusWidget->setBadge(qlementine::StatusBadge::Success);
@@ -279,9 +259,10 @@ void MainWindow::onSend()
         QString text = m_msgToSendEdit->toPlainText();
         QTextCodec *codec = QTextCodec::codecForName(m_encodingComboBox->currentData().toByteArray());
         m_sentMsgBytes = codec->fromUnicode(text);
-        quint64 written = m_serialPort.write(m_sentMsgBytes);
+        m_serialPort.write(m_sentMsgBytes);
         triggerMsgPlot();
         updateCalculations();
+        m_charToSendIndex = 0;
     }
 }
 
@@ -290,19 +271,23 @@ void MainWindow::onSendOne()
     if (m_isPortOpened)
     {
         QString text = m_msgToSendEdit->toPlainText();
-        if (m_charToSendIndex < text.length())
+        if (!text.isEmpty())
         {
+            int len = text.length();
+            if (m_charToSendIndex >= len)
+                m_charToSendIndex = 0;
             QChar ch = text.at(m_charToSendIndex);
             QTextCodec *codec = QTextCodec::codecForName(m_encodingComboBox->currentData().toByteArray());
             m_sentMsgBytes = codec->fromUnicode(ch);
-            quint64 written = m_serialPort.write(m_sentMsgBytes);
-            m_charToSendIndex++;
+            m_serialPort.write(m_sentMsgBytes);
             triggerMsgPlot();
             updateCalculations();
+            if (m_charToSendIndex < (len - 1))
+                m_charToSendIndex++;
+            else
+                m_charToSendIndex = 0;
+            m_sendOneBtn->setText(QString("Send \"%1\" at %2").arg(text.at(m_charToSendIndex)).arg(m_charToSendIndex));
         }
-        else
-            m_charToSendIndex = 0;
-        m_sendOneBtn->setText(QString("Send char at %1").arg(m_charToSendIndex));
     }
 }
 
@@ -311,15 +296,12 @@ void MainWindow::setupDefaults()
     // Send area
     QList available_codecs = QTextCodec::availableCodecs();
     for (QByteArray &codec_name : available_codecs)
-    {
         m_encodingComboBox->addItem(codec_name, codec_name);
-    }
-    int index = m_encodingComboBox->findText("UTF-8");
+    int index = m_encodingComboBox->findText("CP866");  // [!] Change to "UTF-8"
     if (index != -1)
         m_encodingComboBox->setCurrentIndex(index);
-
     // Config area
-    m_baudRateSpinBox->setRange(0, 115200);
+    m_baudRateSpinBox->setRange(1, 921600);
     m_baudRateSpinBox->setValue(100);
     QStringList parity_options = {"NoParity", "EvenParity", "OddParity"};
     m_parityComboBox->addItems(parity_options);
@@ -327,15 +309,14 @@ void MainWindow::setupDefaults()
     m_parityComboBox->setItemData(1, QSerialPort::EvenParity);
     m_parityComboBox->setItemData(2, QSerialPort::OddParity);
     m_parityComboBox->setCurrentIndex(2);
-
     m_stopBitsSpinBox->setRange(1, 2);
     m_stopBitsSpinBox->setValue(1);
-    //m_dataBitsSpinBox->setRange(5, 8);
     m_dataBitsSpinBox->setRange(8, 8);
     m_dataBitsSpinBox->setValue(8);
     m_wordsDelaySpinBox->setValue(1);
-    m_plotBitsSpinBox->setValue(10);
-    m_plotBitsSpinBox->setRange(1, 30);
+    // View area
+    m_plotBitsSpinBox->setValue(20);
+    m_plotBitsSpinBox->setRange(1, 40);
 }
 
 void MainWindow::enableSetupFields(bool enabled)
@@ -362,7 +343,8 @@ void MainWindow::updateCalculations()
 {
     if (!m_isPortOpened)
     {
-        m_calcLbl->clear();
+        //m_calcLbl->clear();
+        m_calcLbl->setText("\n\n\n");
         return;
     }
 
@@ -374,7 +356,8 @@ void MainWindow::updateCalculations()
 
     if (msgWords == 0)
     {
-        m_calcLbl->clear();
+        //m_calcLbl->clear();
+        m_calcLbl->setText("\n\n\n");
         return;
     }
 
@@ -392,7 +375,11 @@ void MainWindow::updateCalculations()
     int tacts = msgWords * (1 + dataBits + parityBit + stopBits + delayTacts) - 1;
     float msgTime = (float) T * tacts;
 
-    QString text = QString(("tacts = %1\nT = 1 / baudRate = %2 s\ntime = T * tacts = %3 s")).arg(tacts).arg(T).arg(msgTime);
+    QString text = QString(("words = %1\n"
+                            "tacts = %2\n"
+                            "T = 1 / baudRate = %3 s = %4 ms\n"
+                            "time = T * tacts = %5 s = %6 ms"))
+                       .arg(msgWords).arg(tacts).arg(T).arg(T * 1000).arg(msgTime).arg(msgTime * 1000);
     m_calcLbl->setText(text);
 }
 
