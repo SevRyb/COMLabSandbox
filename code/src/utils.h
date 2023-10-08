@@ -28,6 +28,11 @@ private:
     BIT_TYPE m_type;
 };
 
-int _moveChunk(int &indexLeft, int &indexRight, int size, int maxChunkSize, bool right=true);
+class Utils
+{
+public:
+    // Returns chunk size if moved
+    static int moveChunk(int &indexLeft, int &indexRight, int size, int maxChunkSize, bool right=true);
+};
 
 #endif // UTILS_H

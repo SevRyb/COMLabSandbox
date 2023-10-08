@@ -5,10 +5,8 @@
 #include <QScrollArea>
 #include <QMenu>
 #include <QLabel>
-#include <QPixmap>
 #include <QImage>
 #include <QPainter>
-#include <QPainterPath>
 #include <QByteArray>
 #include <QSerialPort>
 #include <QVector>
@@ -24,7 +22,6 @@ public:
     void visualizeMsg(const QSerialPort *serial_port, int words_delay, const QByteArray &data);
 
 private slots:
-    void onContextMenu(const QPoint &pos);
     void onSaveImg();
 
 private:
@@ -38,17 +35,13 @@ private:
 
     const QSerialPort *m_serialPort;
     int m_wordsDelay;
-
     int m_nPacketBits;
 
     /* Graphics setup */
     QPointF m_plotPos;
     QSizeF m_squareSize;
-    /* Brushes */
-
-
-    /* Pens */
-
+    int m_rightMargin;
+    int m_imgHeight;
 };
 
 #endif // SIGNALPLOTTER_H

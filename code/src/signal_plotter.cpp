@@ -1,15 +1,11 @@
 
 #include "signal_plotter.h"
 
-#include <QImage>
 #include <QPixmap>
-#include <QScrollBar>
+#include <QPainterPath>
 #include <QFontMetrics>
-#include <QPushButton>
 #include <QShortcut>
 #include <QFileDialog>
-#include <QDebug>
-
 
 SignalPlotter::SignalPlotter(QWidget *parent)
     : QScrollArea(parent)
@@ -18,6 +14,8 @@ SignalPlotter::SignalPlotter(QWidget *parent)
 
     m_plotPos = QPointF(50, 35);
     m_squareSize = QSizeF(60, 100);
+    m_rightMargin = 50;
+    m_imgHeight = 220;
 
     m_lbl = new QLabel(this);
     m_lbl->resize(0, 0);
@@ -32,7 +30,10 @@ SignalPlotter::SignalPlotter(QWidget *parent)
 
     setWidget(m_lbl);
 
-    connect(m_lbl, &QLabel::customContextMenuRequested, this, &SignalPlotter::onContextMenu);
+    connect(m_lbl, &QLabel::customContextMenuRequested, this, [this](const QPoint &pos)
+            {
+                m_contextMenu->popup(m_lbl->mapToGlobal(pos));
+            });
     connect(m_saveImgAction, &QAction::triggered, this, &SignalPlotter::onSaveImg);
     connect(schortcut, &QShortcut::activated, this, &SignalPlotter::onSaveImg);
 }
@@ -48,7 +49,6 @@ void SignalPlotter::visualizeMsg(const QSerialPort *serial_port, int words_delay
         m_lbl->adjustSize();
         return;
     }
-
     m_serialPort = serial_port;
     m_wordsDelay = words_delay;
 
@@ -61,91 +61,73 @@ void SignalPlotter::visualizeMsg(const QSerialPort *serial_port, int words_delay
     else if (m_serialPort->stopBits() == QSerialPort::TwoStop)
         m_nPacketBits += 2;
 
-
-    int right_margin = 50;
-    QSize img_size = QSize(m_plotPos.x() + (m_nPacketBits * m_squareSize.width() * data.length()) + right_margin,
-                           220);
-    m_image = QImage(img_size, QImage::Format_RGB16);
+    QSize imgSize = QSize(m_plotPos.x() + (m_nPacketBits * m_squareSize.width() * data.length()) + m_rightMargin, m_imgHeight);
+    m_image = QImage(imgSize, QImage::Format_RGB16);
     m_image.fill(QColor(Qt::white));
 
+    QString hexData = data.toHex();
+    Bit prevBit('1');
     QPainter painter(&m_image);
-
-    QString hex_data = data.toHex();
-    qDebug() << "Message: " << data;
-    qDebug() << "Data: " << hex_data;
-
-    Bit prev_bit('1');
     for (int index = 0; index < data.length(); ++index)
     {
         quint8 byte = data.at(index);
-        QVector<Bit> packet_data;
+        QVector<Bit> packetBits;
 
         // Start bit
-        packet_data.append(Bit('0', BIT_TYPE::START_BIT));
+        packetBits.append(Bit('0', BIT_TYPE::START_BIT));
 
         // Data bits
-        QString payload_bin = QString("%1").arg(QString::number(byte, 2), 8, '0');
-        for (QChar bin_value : payload_bin)
-        {
-            packet_data.append(Bit(bin_value, BIT_TYPE::DATA_BIT));
-        }
+        QString payloadBin = QString("%1").arg(QString::number(byte, 2), 8, '0');
+        for (QChar bitChar : payloadBin)
+            packetBits.append(Bit(bitChar, BIT_TYPE::DATA_BIT));
 
         // Parity bit
         QSerialPort::Parity parity = m_serialPort->parity();
         if (parity != QSerialPort::NoParity)
         {
-            qint8 high_bits = payload_bin.count('1');
+            qint8 nHighBits = payloadBin.count('1');
             if (parity == QSerialPort::EvenParity)
-                packet_data.append(Bit(QString::number(high_bits & 1).at(0), BIT_TYPE::PARITY_BIT));
+                packetBits.append(Bit(QString::number(nHighBits & 1).at(0), BIT_TYPE::PARITY_BIT));
             else if (parity == QSerialPort::OddParity)
-                packet_data.append(Bit(QString::number(!(high_bits & 1)).at(0), BIT_TYPE::PARITY_BIT));
+                packetBits.append(Bit(QString::number(!(nHighBits & 1)).at(0), BIT_TYPE::PARITY_BIT));
         }
 
         // Stop bits
-        packet_data.append(Bit('1', BIT_TYPE::STOP_BIT));  // Always must be at least 1 bit
+        packetBits.append(Bit('1', BIT_TYPE::STOP_BIT));  // Always must be at least 1 bit
         if (m_serialPort->stopBits() == QSerialPort::TwoStop)
-            packet_data.append(Bit('1', BIT_TYPE::STOP_BIT));
+            packetBits.append(Bit('1', BIT_TYPE::STOP_BIT));
 
         // Idle tacts
         for (int i = 0; i < m_wordsDelay; ++i)
-        {
-            packet_data.append(Bit('1', BIT_TYPE::IDLE_BIT));
-        }
+            packetBits.append(Bit('1', BIT_TYPE::IDLE_BIT));
 
-        QPointF segment_pos;
-        segment_pos.rx() = m_plotPos.x() + index * (m_nPacketBits * m_squareSize.width());
-        segment_pos.ry() = m_plotPos.y();
-        visualizePacket(painter, packet_data, prev_bit, segment_pos, "0x" + hex_data.mid(index * 2, 2).toUpper());
-        //qDebug() << "Segment pos: " << segment_pos;
-        prev_bit = packet_data.back();
+        QPointF segmentPos;
+        segmentPos.rx() = m_plotPos.x() + index * (m_nPacketBits * m_squareSize.width());
+        segmentPos.ry() = m_plotPos.y();
+        visualizePacket(painter, packetBits, prevBit, segmentPos, "0x" + hexData.mid(index * 2, 2).toUpper());
+        prevBit = packetBits.back();
     }
-
     painter.end();
 
     m_lbl->setPixmap(QPixmap::fromImage(m_image));
     m_lbl->adjustSize();
 }
 
-void SignalPlotter::onContextMenu(const QPoint &pos)
-{
-    m_contextMenu->popup(m_lbl->mapToGlobal(pos));
-}
-
 void SignalPlotter::onSaveImg()
 {
     QString defaultFileName = QDir::currentPath() + "/plot.png";
-    QString fileName = QFileDialog::getSaveFileName(this, tr("Save Plot"),
+    QString fileName = QFileDialog::getSaveFileName(this, "Save Plot",
                                                     defaultFileName,
-                                                    tr("Images (*.png *.jpg)"));
+                                                    "Images (*.png *.jpg)");
     m_image.save(fileName);
 }
 
-void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packet_data, Bit prev_bit,
-                                    const QPointF &segment_pos, const QString &data_note)
+void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packetBits, Bit prevBit,
+                                    const QPointF &segmentPos, const QString &data_note)
 {
     int nIdleBits = 0;
-    qreal lowLevelY = segment_pos.y() + m_squareSize.height();
-    qreal highLevelY = segment_pos.y();
+    qreal lowLevelY = segmentPos.y() + m_squareSize.height();
+    qreal highLevelY = segmentPos.y();
 
     /* Path */
     QPainterPath signalPath;
@@ -175,6 +157,9 @@ void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packet_data,
     boldFont.setBold(true);
     QFontMetrics boldFontMetrics(boldFont);
 
+    QRect textRect;
+    QPoint textPos;
+
     /* Rects */
     QRect dataBitsRect;
     QRect stopBitsRect;
@@ -184,8 +169,8 @@ void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packet_data,
     {
         if (rect.isEmpty())
         {
-            rect.setX(segment_pos.x() + (index * m_squareSize.width()));
-            rect.setY(segment_pos.y());
+            rect.setX(segmentPos.x() + (index * m_squareSize.width()));
+            rect.setY(segmentPos.y());
             rect.setHeight(m_squareSize.height());
             rect.setWidth(0);
         }
@@ -193,42 +178,42 @@ void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packet_data,
     };
 
 
-    QPoint point(segment_pos.x(), highLevelY);  // Left high corner of signal
-    for (int bit_index = 0; bit_index < packet_data.length(); ++bit_index)
+    QPoint point(segmentPos.x(), highLevelY);  // Left high corner of signal
+    for (int bitIndex = 0; bitIndex < packetBits.length(); ++bitIndex)
     {
-        Bit bit = packet_data.at(bit_index);
+        Bit bit = packetBits.at(bitIndex);
         // First bit
-        if (bit_index == 0)
+        if (bitIndex == 0)
         {
-            if (prev_bit.value() == QChar('0'))
+            if (prevBit.value() == QChar('0'))
             {
                 point.ry() = lowLevelY;
                 signalPath.moveTo(point);
             }
-            else if (prev_bit.value() == QChar('1'))
+            else if (prevBit.value() == QChar('1'))
                 signalPath.moveTo(point);
         }
         else
-            prev_bit = packet_data.at(bit_index-1);
+            prevBit = packetBits.at(bitIndex - 1);
         // Next bits
-        if (prev_bit.value() == QChar('0') && bit.value() == QChar('0'))
+        if (prevBit.value() == QChar('0') && bit.value() == QChar('0'))
         {
             point.rx() += m_squareSize.width();
             signalPath.lineTo(point);
         }
-        else if (prev_bit.value() == QChar('1') && bit.value() == QChar('1'))
+        else if (prevBit.value() == QChar('1') && bit.value() == QChar('1'))
         {
             point.rx() += m_squareSize.width();
             signalPath.lineTo(point);
         }
-        else if (prev_bit.value() == QChar('0') && bit.value() == QChar('1'))
+        else if (prevBit.value() == QChar('0') && bit.value() == QChar('1'))
         {
             point.ry() = highLevelY;
             signalPath.lineTo(point);
             point.rx() += m_squareSize.width();
             signalPath.lineTo(point);
         }
-        else if (prev_bit.value() == QChar('1') && bit.value() == QChar('0'))
+        else if (prevBit.value() == QChar('1') && bit.value() == QChar('0'))
         {
             point.ry() = lowLevelY;
             signalPath.lineTo(point);
@@ -238,60 +223,55 @@ void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packet_data,
 
         painter.setPen(notesPen);
         painter.setFont(normalFont);
-        QRect text_rect;
+
         QRectF rect;
         if (bit.type() == BIT_TYPE::START_BIT)
         {
             /* Draw start bit */
-            rect = QRectF(segment_pos.x() + (bit_index * m_squareSize.width()), segment_pos.y(),
+            rect = QRectF(segmentPos.x() + (bitIndex * m_squareSize.width()), segmentPos.y(),
                           m_squareSize.width(), m_squareSize.height());  // Always one bit
             painter.fillRect(rect, startStopBitsBrush);
             /* Draw note */
             const char text[] = "start";
-            text_rect = normalFontMetrics.boundingRect(text);
-            QPoint text_pos(segment_pos.x() + (bit_index * m_squareSize.width()) - text_rect.width() / 2 + m_squareSize.width() / 2,
-                            segment_pos.y() - text_rect.height() / 2);
-            painter.drawText(text_pos, text);
+            textRect = normalFontMetrics.boundingRect(text);
+            textPos = QPoint(segmentPos.x() + (bitIndex * m_squareSize.width()) - textRect.width() / 2 + m_squareSize.width() / 2,
+                            segmentPos.y() - textRect.height() / 2);
+            painter.drawText(textPos, text);
         }
         if (bit.type() == BIT_TYPE::DATA_BIT)
-        {
-            _updateRect(dataBitsRect, bit_index);
-        }
+            _updateRect(dataBitsRect, bitIndex);
         if (bit.type() == BIT_TYPE::PARITY_BIT)
         {
-            rect = QRectF(segment_pos.x() + (bit_index * m_squareSize.width()), segment_pos.y(),
+            rect = QRectF(segmentPos.x() + (bitIndex * m_squareSize.width()), segmentPos.y(),
                           m_squareSize.width(), m_squareSize.height());
             painter.fillRect(rect, parityBitBrush);
             /* Draw note */
             const char text[] = "parity";
-            text_rect = normalFontMetrics.boundingRect(text);
-            QPoint text_pos(segment_pos.x() + (bit_index * m_squareSize.width()) - text_rect.width() / 2 + m_squareSize.width() / 2,
-                            segment_pos.y() - text_rect.height() / 2);
-            painter.drawText(text_pos, text);
+            textRect = normalFontMetrics.boundingRect(text);
+            textPos = QPoint(segmentPos.x() + (bitIndex * m_squareSize.width()) - textRect.width() / 2 + m_squareSize.width() / 2,
+                            segmentPos.y() - textRect.height() / 2);
+            painter.drawText(textPos, text);
         }
         if (bit.type() == BIT_TYPE::STOP_BIT)
-        {
-            _updateRect(stopBitsRect, bit_index);
-        }
+            _updateRect(stopBitsRect, bitIndex);
         if (bit.type() == BIT_TYPE::IDLE_BIT)
         {
             nIdleBits++;
-            _updateRect(idleBitsRect, bit_index);
+            _updateRect(idleBitsRect, bitIndex);
         }
     }
 
     painter.setFont(normalFont);
-    QRect text_rect;
     /* Stop bits highlight & text */
     if (!stopBitsRect.isEmpty())
     {
         painter.fillRect(stopBitsRect, startStopBitsBrush);
         /* Draw note */
         const char text[] = "stop";
-        text_rect = normalFontMetrics.boundingRect(text);
-        QPoint text_pos(stopBitsRect.center().x() - text_rect.width() / 2,
-                        stopBitsRect.y() - text_rect.height() / 2);
-        painter.drawText(text_pos, text);
+        textRect = normalFontMetrics.boundingRect(text);
+        textPos = QPoint(stopBitsRect.center().x() - textRect.width() / 2,
+                        stopBitsRect.y() - textRect.height() / 2);
+        painter.drawText(textPos, text);
     }
     /* Idle bits highlight & text */
     if (!idleBitsRect.isEmpty())
@@ -299,22 +279,22 @@ void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packet_data,
         painter.fillRect(idleBitsRect, idleBitsBrush);
         /* Draw note */
         const char text[] = "idle";
-        text_rect = normalFontMetrics.boundingRect(text);
-        QPoint text_pos(idleBitsRect.center().x() - text_rect.width() / 2,
-                        idleBitsRect.y() - text_rect.height() / 2);
-        painter.drawText(text_pos, text);
+        textRect = normalFontMetrics.boundingRect(text);
+        textPos = QPoint(idleBitsRect.center().x() - textRect.width() / 2,
+                        idleBitsRect.y() - textRect.height() / 2);
+        painter.drawText(textPos, text);
     }
 
     /* Drawing bit signs */
     painter.setFont(bitFont);
-    for (int index = 0; index < packet_data.length(); ++index)
+    for (int index = 0; index < packetBits.length(); ++index)
     {
-        Bit bit = packet_data.at(index);
+        Bit bit = packetBits.at(index);
         painter.setFont(bitFont);
-        text_rect = bitFontMetrics.boundingRect(bit.value());
-        QPoint text_pos(segment_pos.x() + index * m_squareSize.width() + m_squareSize.width() / 2 - text_rect.width() / 2,
-                        segment_pos.y() + m_squareSize.height() / 2  + text_rect.height() / 2);
-        painter.drawText(text_pos, bit.value());
+        textRect = bitFontMetrics.boundingRect(bit.value());
+        textPos = QPoint(segmentPos.x() + index * m_squareSize.width() + m_squareSize.width() / 2 - textRect.width() / 2,
+                        segmentPos.y() + m_squareSize.height() / 2  + textRect.height() / 2);
+        painter.drawText(textPos, bit.value());
     }
 
     /* Draw signal */
@@ -325,41 +305,41 @@ void SignalPlotter::visualizePacket(QPainter &painter, QVector<Bit> packet_data,
     if (!dataBitsRect.isEmpty())
     {
         painter.setPen(dashLinePen);
-        int line_len = dataBitsRect.height() + 55;
-        int line_voffset = line_len / 2 - dataBitsRect.height() / 2;
-        int line_hoffset = 3;
-        painter.drawLine(dataBitsRect.x() + line_hoffset + 1, dataBitsRect.y() - line_voffset,
-                         dataBitsRect.x() + line_hoffset + 1, dataBitsRect.bottomLeft().y() + line_voffset);
-        painter.drawLine(dataBitsRect.topRight().x() - line_hoffset, dataBitsRect.y() - line_voffset,
-                         dataBitsRect.topRight().x() - line_hoffset, dataBitsRect.bottomLeft().y() + line_voffset);
+        int lineLen = dataBitsRect.height() + 55;
+        int lineVOffset = lineLen / 2 - dataBitsRect.height() / 2;
+        int lineHOffset = 3;
+        painter.drawLine(dataBitsRect.x() + lineHOffset + 1, dataBitsRect.y() - lineVOffset,
+                         dataBitsRect.x() + lineHOffset + 1, dataBitsRect.bottomLeft().y() + lineVOffset);
+        painter.drawLine(dataBitsRect.topRight().x() - lineHOffset, dataBitsRect.y() - lineVOffset,
+                         dataBitsRect.topRight().x() - lineHOffset, dataBitsRect.bottomLeft().y() + lineVOffset);
         /* Draw note */
         painter.setPen(notesPen);
         const char text[] = "data";
-        text_rect = boldFontMetrics.boundingRect(text);
-        QPoint text_pos(dataBitsRect.center().x() - text_rect.width() / 2,
-                        dataBitsRect.y() - text_rect.height() / 2);
+        textRect = boldFontMetrics.boundingRect(text);
+        textPos = QPoint(dataBitsRect.center().x() - textRect.width() / 2,
+                        dataBitsRect.y() - textRect.height() / 2);
         painter.setFont(boldFont);
-        painter.drawText(text_pos, text);
+        painter.drawText(textPos, text);
         /* Hex value */
-        text_rect = boldFontMetrics.boundingRect(data_note);
-        text_pos = QPoint(dataBitsRect.center().x() - text_rect.width() / 2,
-                 dataBitsRect.bottom() + text_rect.height() + 10);
-        painter.drawText(text_pos, data_note);
+        textRect = boldFontMetrics.boundingRect(data_note);
+        textPos = QPoint(dataBitsRect.center().x() - textRect.width() / 2,
+                 dataBitsRect.bottom() + textRect.height() + 10);
+        painter.drawText(textPos, data_note);
     }
 
     /* Draw packet sign */
     painter.setPen(QPen(Qt::black, 1));
-    int line_len = 40;
-    int line_y = segment_pos.y() + m_squareSize.height() + 10;
-    int line2_x = segment_pos.x() + (packet_data.length() - nIdleBits) * m_squareSize.width();
-    painter.drawLine(segment_pos.x(), line_y, segment_pos.x(), line_y + line_len);
-    painter.drawLine(line2_x, line_y, line2_x, line_y + line_len);
-    painter.drawLine(segment_pos.x(), line_y + line_len, line2_x, line_y + line_len);
+    int lineLen = 40;
+    int lineY = segmentPos.y() + m_squareSize.height() + 10;
+    int line2X = segmentPos.x() + (packetBits.length() - nIdleBits) * m_squareSize.width();
+    painter.drawLine(segmentPos.x(), lineY, segmentPos.x(), lineY + lineLen);
+    painter.drawLine(line2X, lineY, line2X, lineY + lineLen);
+    painter.drawLine(segmentPos.x(), lineY + lineLen, line2X, lineY + lineLen);
     /* Text */
     const char text[] = "packet";
-    text_rect = normalFontMetrics.boundingRect(text);
-    QPoint text_pos = QPoint(segment_pos.x() + ((packet_data.length() - nIdleBits) * m_squareSize.width()) / 2 - text_rect.width() / 2,
-                      line_y + line_len + text_rect.height());
+    textRect = normalFontMetrics.boundingRect(text);
+    textPos = QPoint(segmentPos.x() + ((packetBits.length() - nIdleBits) * m_squareSize.width()) / 2 - textRect.width() / 2,
+                      lineY + lineLen + textRect.height());
     painter.setFont(normalFont);
-    painter.drawText(text_pos, text);
+    painter.drawText(textPos, text);
 }

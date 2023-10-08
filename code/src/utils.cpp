@@ -28,8 +28,7 @@ BIT_TYPE Bit::type()
 
 /* Useful functions */
 
-// Returns chunk size if moved
-int _moveChunk(int &indexLeft, int &indexRight, int size, int maxChunkSize, bool right)
+int Utils::moveChunk(int &indexLeft, int &indexRight, int size, int maxChunkSize, bool right)
 {
     if (right)
     {
